@@ -22,6 +22,9 @@ export const ENV = {
   // Hosting Site Identifier (Multi-site on Spark Plan)
   HOSTING_SITE: "daily-task-planner-api-niomsolutionx",
 
+  // Firestore collection for storing user tokens and sync preferences
+  FIRESTORE_COLLECTION: "daily_task_planner_users",
+
   // Default Theme ("orange" | "emerald")
   DEFAULT_THEME: "orange"
 };

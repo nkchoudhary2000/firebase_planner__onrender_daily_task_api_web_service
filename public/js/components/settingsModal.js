@@ -66,12 +66,15 @@ export class SettingsModalComponent extends EventTarget {
                 👁️
               </button>
             </div>
-            <div style="margin-top: 0.35rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem;">
-              <span style="color: var(--text-muted);">
-                All requests are authenticated with Bearer token.
+            
+            <!-- Firestore Sync Status Indicator -->
+            <div id="settingsFirestoreBadge" style="margin-top: 0.35rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem;">
+              <span id="settingsFirestoreText" style="color: #10b981; display: flex; align-items: center; gap: 0.35rem;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+                <span>Synced with Firestore (collection: <code>daily_task_planner_users</code>)</span>
               </span>
               <a href="https://chronos-planner-app.onrender.com/auth/login" target="_blank" rel="noopener noreferrer" style="color: var(--color-primary); font-weight: 600; text-decoration: none;">
-                🔑 Get API Token from Chronos App ↗
+                🔑 Get Token from Chronos App ↗
               </a>
             </div>
           </div>
@@ -174,7 +177,7 @@ export class SettingsModalComponent extends EventTarget {
       Utils.toast('Theme set to Cyber Emerald', 'info');
     });
 
-    saveBtn.addEventListener('click', () => {
+    saveBtn.addEventListener('click', async () => {
       const tokenInput = this.modalEl.querySelector('#settingsApiToken');
       const baseUrlInput = this.modalEl.querySelector('#settingsBaseUrl');
       const fbConfigInput = this.modalEl.querySelector('#settingsFirebaseConfigJson');
@@ -182,11 +185,11 @@ export class SettingsModalComponent extends EventTarget {
       const tokenVal = tokenInput.value.trim();
       const baseUrlVal = baseUrlInput.value.trim();
 
-      api.setToken(tokenVal);
-      api.setBaseUrl(baseUrlVal);
+      // 1. Save directly to Firestore collection & local cache
+      await auth.saveTokenToFirestore(tokenVal, baseUrlVal);
 
       try {
-        if (fbConfigInput.value.trim()) {
+        if (fbConfigInput && fbConfigInput.value.trim()) {
           const parsed = JSON.parse(fbConfigInput.value.trim());
           auth.setFirebaseConfig(parsed);
         }
@@ -195,7 +198,6 @@ export class SettingsModalComponent extends EventTarget {
         return;
       }
 
-      Utils.toast('Settings saved. Fetching data from Planner backend...', 'info');
       this.close();
 
       if (this.onSettingsSaved) {
@@ -209,6 +211,14 @@ export class SettingsModalComponent extends EventTarget {
     auth.addEventListener('auth:stateChanged', () => {
       this.updateUserUI();
     });
+
+    auth.addEventListener('token:syncedFromFirestore', (e) => {
+      const tokenInput = this.modalEl.querySelector('#settingsApiToken');
+      const baseUrlInput = this.modalEl.querySelector('#settingsBaseUrl');
+      if (tokenInput && e.detail.token) tokenInput.value = e.detail.token;
+      if (baseUrlInput && e.detail.baseUrl) baseUrlInput.value = e.detail.baseUrl;
+      this.updateUserUI();
+    });
   }
 
   updateUserUI() {
@@ -217,17 +227,37 @@ export class SettingsModalComponent extends EventTarget {
     const nameEl = this.modalEl.querySelector('#settingsUserName');
     const emailEl = this.modalEl.querySelector('#settingsUserEmail');
     const authBtn = this.modalEl.querySelector('#btnGoogleAuthAction');
+    const firestoreText = this.modalEl.querySelector('#settingsFirestoreText');
 
     if (user) {
       avatar.src = user.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.displayName)}`;
       nameEl.textContent = user.displayName || 'Google User';
       emailEl.textContent = user.email || 'Signed in with Google';
       authBtn.innerHTML = `Sign Out`;
+
+      if (firestoreText) {
+        if (user.uid && !user.uid.startsWith('guest_') && !user.uid.startsWith('local_')) {
+          firestoreText.innerHTML = `
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+            <span style="color: #10b981;">Firestore Cloud Collection: <code>daily_task_planner_users/${user.uid.substring(0, 6)}...</code></span>
+          `;
+        } else {
+          firestoreText.innerHTML = `
+            <span style="color: var(--text-muted);">Local mode: Sign in with Google to sync token to Firestore collection</span>
+          `;
+        }
+      }
     } else {
       avatar.src = 'https://api.dicebear.com/7.x/initials/svg?seed=Guest';
       nameEl.textContent = 'Not Logged In';
       emailEl.textContent = 'Sign in with Google to sync preferences';
       authBtn.innerHTML = `Sign In with Google`;
+
+      if (firestoreText) {
+        firestoreText.innerHTML = `
+          <span style="color: var(--text-muted);">Sign in with Google to sync token to Firestore collection</span>
+        `;
+      }
     }
   }
 

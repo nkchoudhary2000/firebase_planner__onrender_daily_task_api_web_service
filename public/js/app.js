@@ -301,6 +301,12 @@ class ChronosApp {
         this.authScreen.show();
       }
     });
+
+    auth.addEventListener('token:syncedFromFirestore', (e) => {
+      console.log('🔄 [Chronos] API token synchronized from Firestore collection. Refreshing planner data...');
+      this.refreshAllData({ forceServer: true });
+      this.checkInitialConnection();
+    });
   }
 
   updateHeaderAuthUI(user) {
