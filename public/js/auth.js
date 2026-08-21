@@ -12,6 +12,7 @@ export class AuthManager {
     this.currentUser = null;
     this.authInstance = null;
     this.db = null;
+    this.unsubscribeSnapshot = null;
     this.storageKeyFirebaseConfig = 'chronos_firebase_config';
     this.storageKeyLocalUser = 'chronos_local_user';
     this.listeners = {};
@@ -82,10 +83,11 @@ export class AuthManager {
               provider: user.providerData && user.providerData[0] ? user.providerData[0].providerId : 'firebase'
             };
             this.persistLocalUser(this.currentUser);
-            // Bidirectional token sync with Firestore collection
-            await this.syncTokenFromFirestore(user.uid);
+            
+            // Start real-time multi-device Firestore token sync
+            this.startFirestoreRealtimeSync(user.uid);
           } else {
-            // Check if local account or demo is active
+            this.stopFirestoreRealtimeSync();
             this.currentUser = this.loadLocalUser();
           }
           this.notifyAuthState();
@@ -102,49 +104,87 @@ export class AuthManager {
   }
 
   /**
-   * Sync and retrieve Chronos API token from Firestore collection
+   * Start real-time multi-device Firestore listener for token & settings
    * @param {string} uid
-   * @returns {Promise<string|null>}
    */
-  async syncTokenFromFirestore(uid) {
-    if (!uid || !this.db) return null;
+  startFirestoreRealtimeSync(uid) {
+    if (!uid || !this.db) return;
+    this.stopFirestoreRealtimeSync();
+
     const collectionName = ENV.FIRESTORE_COLLECTION || 'daily_task_planner_users';
+
     try {
       const docRef = this.db.collection(collectionName).doc(uid);
-      const docSnap = await docRef.get();
-      if (docSnap.exists) {
-        const data = docSnap.data();
-        let tokenUpdated = false;
-        if (data.chronos_api_token) {
-          api.setToken(data.chronos_api_token);
-          tokenUpdated = true;
-          console.log(`☁️ [Firestore] Loaded API token from collection "${collectionName}/${uid}"`);
+      
+      this.unsubscribeSnapshot = docRef.onSnapshot(async (docSnap) => {
+        if (docSnap.exists) {
+          const data = docSnap.data() || {};
+          let tokenUpdated = false;
+
+          if (data.chronos_api_token && data.chronos_api_token.trim()) {
+            const currentToken = api.getToken();
+            if (currentToken !== data.chronos_api_token.trim()) {
+              api.setToken(data.chronos_api_token.trim());
+              tokenUpdated = true;
+              console.log(`☁️ [Firestore Realtime Sync] Active token received from "${collectionName}/${uid}"`);
+            }
+          } else {
+            // Firestore doc exists but has no token; if this device has a local token, upload it now
+            const localToken = api.getToken();
+            if (localToken && localToken.trim()) {
+              console.log(`☁️ [Firestore Sync] Auto-migrating local token to "${collectionName}/${uid}"...`);
+              await this.saveTokenToFirestore(localToken);
+            }
+          }
+
+          if (data.chronos_base_url && data.chronos_base_url.trim()) {
+            api.setBaseUrl(data.chronos_base_url.trim());
+          }
+
+          if (tokenUpdated) {
+            this.dispatchEvent(new CustomEvent('token:syncedFromFirestore', {
+              detail: { token: data.chronos_api_token, baseUrl: data.chronos_base_url, source: 'firestore_realtime' }
+            }));
+            Utils.toast('☁️ API Token synchronized from your Google account', 'success', 3000);
+          }
+        } else {
+          // Document does not exist in Firestore yet; check fallback 'users' collection or upload local token
+          const fallbackSnap = await this.db.collection('users').doc(uid).get().catch(() => null);
+          if (fallbackSnap && fallbackSnap.exists && fallbackSnap.data() && fallbackSnap.data().chronos_api_token) {
+            const fallbackToken = fallbackSnap.data().chronos_api_token;
+            api.setToken(fallbackToken);
+            console.log(`☁️ [Firestore Sync] Restored token from fallback users/${uid}`);
+            await this.saveTokenToFirestore(fallbackToken);
+            this.dispatchEvent(new CustomEvent('token:syncedFromFirestore', {
+              detail: { token: fallbackToken, source: 'firestore_fallback' }
+            }));
+            return;
+          }
+
+          // If this device has a local token, auto-save to Firestore so all other devices receive it
+          const localToken = api.getToken();
+          if (localToken && localToken.trim()) {
+            console.log(`☁️ [Firestore Sync] First-time setup: Uploading local token to "${collectionName}/${uid}"...`);
+            await this.saveTokenToFirestore(localToken);
+          }
         }
-        if (data.chronos_base_url) {
-          api.setBaseUrl(data.chronos_base_url);
-        }
-        if (tokenUpdated) {
-          this.dispatchEvent(new CustomEvent('token:syncedFromFirestore', {
-            detail: { token: data.chronos_api_token, baseUrl: data.chronos_base_url, source: 'firestore' }
-          }));
-          return data.chronos_api_token;
-        }
-      } else {
-        // If Firestore document doesn't exist yet but user has a token in local storage, automatically save to Firestore
-        const existingToken = api.getToken();
-        if (existingToken) {
-          console.log(`☁️ [Firestore] Migrating local token into Firestore collection "${collectionName}/${uid}"...`);
-          await this.saveTokenToFirestore(existingToken);
-        }
-      }
-    } catch (err) {
-      console.warn(`⚠️ [Firestore] Could not fetch token from collection "${collectionName}":`, err.message);
+      }, (err) => {
+        console.warn(`⚠️ [Firestore Listener Notice] ${collectionName}:`, err.message);
+      });
+    } catch (e) {
+      console.warn('⚠️ [Firestore Setup Error]:', e.message);
     }
-    return null;
+  }
+
+  stopFirestoreRealtimeSync() {
+    if (this.unsubscribeSnapshot) {
+      this.unsubscribeSnapshot();
+      this.unsubscribeSnapshot = null;
+    }
   }
 
   /**
-   * Save / update Chronos API token and configuration in Firestore collection
+   * Save / update Chronos API token and configuration across Firestore collections
    * @param {string} token 
    * @param {string|null} [baseUrl=null]
    * @returns {Promise<boolean>}
@@ -170,9 +210,14 @@ export class AuthManager {
             : new Date()
         };
 
+        // Write to primary collection
         await this.db.collection(collectionName).doc(user.uid).set(payload, { merge: true });
+        
+        // Also write to 'users' collection as fallback for maximum resilience
+        this.db.collection('users').doc(user.uid).set(payload, { merge: true }).catch(() => {});
+
         console.log(`☁️ [Firestore] Token saved to collection "${collectionName}/${user.uid}"`);
-        Utils.toast(`Token saved in Firestore collection (${collectionName}) ✓`, 'success');
+        Utils.toast(`Token saved in Cloud (available on all your devices) ✓`, 'success');
         return true;
       } catch (err) {
         console.error(`❌ [Firestore] Error saving token to "${collectionName}":`, err);
@@ -230,8 +275,8 @@ export class AuthManager {
         this.notifyAuthState();
         Utils.toast(`Signed in as ${this.currentUser.displayName}`, 'success');
         
-        // Sync token from Firestore collection
-        await this.syncTokenFromFirestore(user.uid);
+        // Start real-time multi-device token sync
+        this.startFirestoreRealtimeSync(user.uid);
         
         return this.currentUser;
       } catch (err) {
@@ -271,8 +316,8 @@ export class AuthManager {
         this.notifyAuthState();
         Utils.toast(`Welcome back, ${this.currentUser.displayName}!`, 'success');
 
-        // Sync token from Firestore
-        await this.syncTokenFromFirestore(user.uid);
+        // Start real-time multi-device token sync
+        this.startFirestoreRealtimeSync(user.uid);
 
         return this.currentUser;
       } catch (err) {
@@ -321,9 +366,8 @@ export class AuthManager {
 
         if (apiToken) {
           await this.saveTokenToFirestore(apiToken);
-        } else {
-          await this.syncTokenFromFirestore(user.uid);
         }
+        this.startFirestoreRealtimeSync(user.uid);
 
         return this.currentUser;
       } catch (err) {
@@ -358,6 +402,7 @@ export class AuthManager {
    * 4. Guest Demo Login
    */
   signInAsGuest() {
+    this.stopFirestoreRealtimeSync();
     const guestUser = {
       uid: 'guest_' + Date.now(),
       displayName: 'Guest Planner',
@@ -381,6 +426,7 @@ export class AuthManager {
    * Sign Out
    */
   async signOut() {
+    this.stopFirestoreRealtimeSync();
     if (this.authInstance) {
       try {
         await this.authInstance.signOut();
