@@ -234,26 +234,26 @@ export class SettingsModalComponent extends EventTarget {
       authBtn.innerHTML = `Sign Out`;
 
       if (firestoreText) {
-        if (user.uid && !user.uid.startsWith('guest_') && !user.uid.startsWith('local_')) {
+        if (user.uid && !user.uid.startsWith('guest_')) {
           firestoreText.innerHTML = `
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
-            <span style="color: #10b981;">Firestore Cloud Collection: <code>daily_task_planner_users/${user.uid.substring(0, 6)}...</code></span>
+            <span style="color: #10b981;">Permanent Firestore DB: <code>daily_task_planner_users</code> (Cloud)</span>
           `;
         } else {
           firestoreText.innerHTML = `
-            <span style="color: var(--text-muted);">Local mode: Sign in with Google to sync token to Firestore collection</span>
+            <span style="color: var(--text-muted);">Sign in with Google or Email to link token permanently to Firestore Cloud DB</span>
           `;
         }
       }
     } else {
       avatar.src = 'https://api.dicebear.com/7.x/initials/svg?seed=Guest';
       nameEl.textContent = 'Not Logged In';
-      emailEl.textContent = 'Sign in with Google to sync preferences';
+      emailEl.textContent = 'Sign in to sync preferences to Firestore Cloud';
       authBtn.innerHTML = `Sign In with Google`;
 
       if (firestoreText) {
         firestoreText.innerHTML = `
-          <span style="color: var(--text-muted);">Sign in with Google to sync token to Firestore collection</span>
+          <span style="color: var(--text-muted);">Sign in with Google or Email to link token permanently to Firestore Cloud DB</span>
         `;
       }
     }

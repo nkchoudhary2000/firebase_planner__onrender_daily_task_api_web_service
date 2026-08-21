@@ -10,38 +10,51 @@ export class ApiClient {
     this.DEFAULT_BASE_URL = ENV.DEFAULT_API_BASE_URL || 'https://chronos-planner-app.onrender.com';
     this.storageKeyBaseUrl = 'chronos_base_url';
     this.storageKeyToken = 'chronos_api_token';
+    this.token = '';
+    this.baseUrl = this.DEFAULT_BASE_URL;
+
+    // Load initial in-memory cache from browser storage if present
+    try {
+      const storedUrl = localStorage.getItem(this.storageKeyBaseUrl);
+      if (storedUrl && storedUrl.trim()) this.baseUrl = storedUrl.trim().replace(/\/+$/, '');
+      const storedToken = localStorage.getItem(this.storageKeyToken);
+      if (storedToken && storedToken.trim()) this.token = storedToken.trim().replace(/^["']|["']$/g, '');
+    } catch (e) {}
   }
 
   getBaseUrl() {
-    const stored = localStorage.getItem(this.storageKeyBaseUrl);
-    if (stored !== null && stored !== undefined && stored.trim() !== '') {
-      return stored.trim();
-    }
-    return this.DEFAULT_BASE_URL;
+    return this.baseUrl || this.DEFAULT_BASE_URL;
   }
 
   setBaseUrl(url) {
-    if (url && url.trim()) {
-      localStorage.setItem(this.storageKeyBaseUrl, url.trim().replace(/\/+$/, ''));
-    } else {
-      localStorage.removeItem(this.storageKeyBaseUrl);
-    }
+    const cleanUrl = url && url.trim() ? url.trim().replace(/\/+$/, '') : this.DEFAULT_BASE_URL;
+    this.baseUrl = cleanUrl;
+    try {
+      if (url && url.trim()) {
+        localStorage.setItem(this.storageKeyBaseUrl, cleanUrl);
+      } else {
+        localStorage.removeItem(this.storageKeyBaseUrl);
+      }
+    } catch (e) {}
   }
 
   getToken() {
-    const raw = localStorage.getItem(this.storageKeyToken) || '';
-    return raw.trim().replace(/^["']|["']$/g, '');
+    return this.token ? this.token.trim().replace(/^["']|["']$/g, '') : '';
   }
 
   setToken(token) {
-    if (token) {
+    if (token && token.trim()) {
       const cleanToken = token.trim().replace(/^["']|["']$/g, '');
-      if (cleanToken) {
+      this.token = cleanToken;
+      try {
         localStorage.setItem(this.storageKeyToken, cleanToken);
-        return;
-      }
+      } catch (e) {}
+    } else {
+      this.token = '';
+      try {
+        localStorage.removeItem(this.storageKeyToken);
+      } catch (e) {}
     }
-    localStorage.removeItem(this.storageKeyToken);
   }
 
   hasToken() {

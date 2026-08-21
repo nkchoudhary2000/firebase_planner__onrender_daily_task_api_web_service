@@ -85,7 +85,7 @@ export class AuthManager {
             this.persistLocalUser(this.currentUser);
             
             // Start real-time multi-device Firestore token sync
-            this.startFirestoreRealtimeSync(user.uid);
+            this.startFirestoreRealtimeSync(user.uid, user.email);
           } else {
             this.stopFirestoreRealtimeSync();
             this.currentUser = this.loadLocalUser();
@@ -105,16 +105,23 @@ export class AuthManager {
 
   /**
    * Start real-time multi-device Firestore listener for token & settings
-   * @param {string} uid
+   * Permanently syncs from Firestore database collection (Spark plan)
+   * @param {string|null} uid
+   * @param {string|null} email
    */
-  startFirestoreRealtimeSync(uid) {
-    if (!uid || !this.db) return;
+  startFirestoreRealtimeSync(uid = null, email = null) {
+    if (!this.db) return;
     this.stopFirestoreRealtimeSync();
 
     const collectionName = ENV.FIRESTORE_COLLECTION || 'daily_task_planner_users';
+    const userEmail = email || (this.currentUser ? this.currentUser.email : null);
+    const sanitizedEmail = userEmail ? userEmail.toLowerCase().replace(/[^a-z0-9]/g, '_') : null;
+    const docId = uid || (sanitizedEmail ? `email_${sanitizedEmail}` : null);
+
+    if (!docId) return;
 
     try {
-      const docRef = this.db.collection(collectionName).doc(uid);
+      const docRef = this.db.collection(collectionName).doc(docId);
       
       this.unsubscribeSnapshot = docRef.onSnapshot(async (docSnap) => {
         if (docSnap.exists) {
@@ -126,13 +133,13 @@ export class AuthManager {
             if (currentToken !== data.chronos_api_token.trim()) {
               api.setToken(data.chronos_api_token.trim());
               tokenUpdated = true;
-              console.log(`☁️ [Firestore Realtime Sync] Active token received from "${collectionName}/${uid}"`);
+              console.log(`☁️ [Firestore Database Cloud Sync] Active permanent token received from "${collectionName}/${docId}"`);
             }
           } else {
-            // Firestore doc exists but has no token; if this device has a local token, upload it now
+            // Firestore doc exists but has no token; if this device has an in-memory token, upload it now
             const localToken = api.getToken();
             if (localToken && localToken.trim()) {
-              console.log(`☁️ [Firestore Sync] Auto-migrating local token to "${collectionName}/${uid}"...`);
+              console.log(`☁️ [Firestore Sync] Auto-migrating active token to "${collectionName}/${docId}"...`);
               await this.saveTokenToFirestore(localToken);
             }
           }
@@ -145,31 +152,58 @@ export class AuthManager {
             this.dispatchEvent(new CustomEvent('token:syncedFromFirestore', {
               detail: { token: data.chronos_api_token, baseUrl: data.chronos_base_url, source: 'firestore_realtime' }
             }));
-            Utils.toast('☁️ API Token synchronized from your Google account', 'success', 3000);
+            Utils.toast('☁️ Permanent API Token synchronized from Firestore Cloud Database', 'success', 3000);
           }
         } else {
-          // Document does not exist in Firestore yet; check fallback 'users' collection or upload local token
-          const fallbackSnap = await this.db.collection('users').doc(uid).get().catch(() => null);
-          if (fallbackSnap && fallbackSnap.exists && fallbackSnap.data() && fallbackSnap.data().chronos_api_token) {
-            const fallbackToken = fallbackSnap.data().chronos_api_token;
-            api.setToken(fallbackToken);
-            console.log(`☁️ [Firestore Sync] Restored token from fallback users/${uid}`);
-            await this.saveTokenToFirestore(fallbackToken);
-            this.dispatchEvent(new CustomEvent('token:syncedFromFirestore', {
-              detail: { token: fallbackToken, source: 'firestore_fallback' }
-            }));
-            return;
+          // Document does not exist by primary ID yet; check if stored under email or fallback collection
+          let restored = false;
+
+          if (sanitizedEmail && docId !== `email_${sanitizedEmail}`) {
+            const emailDoc = await this.db.collection(collectionName).doc(`email_${sanitizedEmail}`).get().catch(() => null);
+            if (emailDoc && emailDoc.exists && emailDoc.data() && emailDoc.data().chronos_api_token) {
+              const emailToken = emailDoc.data().chronos_api_token;
+              const emailBaseUrl = emailDoc.data().chronos_base_url;
+              api.setToken(emailToken);
+              if (emailBaseUrl) api.setBaseUrl(emailBaseUrl);
+              console.log(`☁️ [Firestore Sync] Restored permanent token by email (${userEmail})`);
+              await this.saveTokenToFirestore(emailToken, emailBaseUrl);
+              this.dispatchEvent(new CustomEvent('token:syncedFromFirestore', {
+                detail: { token: emailToken, baseUrl: emailBaseUrl, source: 'firestore_email_restore' }
+              }));
+              restored = true;
+            }
           }
 
-          // If this device has a local token, auto-save to Firestore so all other devices receive it
-          const localToken = api.getToken();
-          if (localToken && localToken.trim()) {
-            console.log(`☁️ [Firestore Sync] First-time setup: Uploading local token to "${collectionName}/${uid}"...`);
-            await this.saveTokenToFirestore(localToken);
+          if (!restored && uid) {
+            const fallbackSnap = await this.db.collection('users').doc(uid).get().catch(() => null);
+            if (fallbackSnap && fallbackSnap.exists && fallbackSnap.data() && fallbackSnap.data().chronos_api_token) {
+              const fallbackToken = fallbackSnap.data().chronos_api_token;
+              api.setToken(fallbackToken);
+              console.log(`☁️ [Firestore Sync] Restored token from fallback users/${uid}`);
+              await this.saveTokenToFirestore(fallbackToken);
+              this.dispatchEvent(new CustomEvent('token:syncedFromFirestore', {
+                detail: { token: fallbackToken, source: 'firestore_fallback' }
+              }));
+              restored = true;
+            }
+          }
+
+          // If this session has a token, auto-save to Firestore so all sessions and future logins receive it
+          if (!restored) {
+            const localToken = api.getToken();
+            if (localToken && localToken.trim()) {
+              console.log(`☁️ [Firestore Sync] First-time setup: Uploading active token to "${collectionName}/${docId}"...`);
+              await this.saveTokenToFirestore(localToken);
+            }
           }
         }
       }, (err) => {
-        console.warn(`⚠️ [Firestore Listener Notice] ${collectionName}:`, err.message);
+        if (err.code === 'permission-denied' || (err.message && err.message.includes('permission'))) {
+          this.firestorePermissionError = true;
+          console.warn(`⚠️ [Firestore Rules Notice] ${collectionName} requires read/write permission in Firebase Console.\nUpdate your Firebase Console -> Firestore Database -> Rules tab with:\n\nmatch /daily_task_planner_users/{userId} { allow read, write: if true; }`);
+        } else {
+          console.warn(`⚠️ [Firestore Listener Notice] ${collectionName}:`, err.message);
+        }
       });
     } catch (e) {
       console.warn('⚠️ [Firestore Setup Error]:', e.message);
@@ -184,40 +218,50 @@ export class AuthManager {
   }
 
   /**
-   * Save / update Chronos API token and configuration across Firestore collections
+   * Save / update Chronos API token permanently in Firestore database collection
    * @param {string} token 
    * @param {string|null} [baseUrl=null]
    * @returns {Promise<boolean>}
    */
   async saveTokenToFirestore(token, baseUrl = null) {
-    // 1. Update in-memory & local cache
+    // 1. Update in-memory API client
     api.setToken(token);
     if (baseUrl) api.setBaseUrl(baseUrl);
 
     const collectionName = ENV.FIRESTORE_COLLECTION || 'daily_task_planner_users';
     const user = this.currentUser;
 
-    // 2. Persist to Firestore if user is logged into Firebase
-    if (user && user.uid && !user.uid.startsWith('guest_') && !user.uid.startsWith('local_') && this.db) {
+    // 2. Persist permanently to Firestore database collection (Spark Plan)
+    if (this.db) {
       try {
         const payload = {
           chronos_api_token: token ? token.trim() : '',
           chronos_base_url: baseUrl ? baseUrl.trim() : api.getBaseUrl(),
-          email: user.email || '',
-          displayName: user.displayName || '',
+          email: user && user.email ? user.email : '',
+          displayName: user && user.displayName ? user.displayName : '',
           updated_at: (typeof window !== 'undefined' && window.firebase && window.firebase.firestore)
             ? window.firebase.firestore.FieldValue.serverTimestamp()
             : new Date()
         };
 
-        // Write to primary collection
-        await this.db.collection(collectionName).doc(user.uid).set(payload, { merge: true });
-        
-        // Also write to 'users' collection as fallback for maximum resilience
-        this.db.collection('users').doc(user.uid).set(payload, { merge: true }).catch(() => {});
+        // Write to primary document (UID)
+        if (user && user.uid && !user.uid.startsWith('guest_')) {
+          await this.db.collection(collectionName).doc(user.uid).set(payload, { merge: true });
+        }
 
-        console.log(`☁️ [Firestore] Token saved to collection "${collectionName}/${user.uid}"`);
-        Utils.toast(`Token saved in Cloud (available on all your devices) ✓`, 'success');
+        // Dual-index document by email so token is 100% permanently recoverable even after clearing browser cookies & site data
+        if (user && user.email) {
+          const sanitizedEmail = user.email.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          await this.db.collection(collectionName).doc(`email_${sanitizedEmail}`).set(payload, { merge: true });
+        }
+
+        // Write to fallback 'users' collection for extra resilience
+        if (user && user.uid && !user.uid.startsWith('guest_')) {
+          this.db.collection('users').doc(user.uid).set(payload, { merge: true }).catch(() => {});
+        }
+
+        console.log(`☁️ [Firestore Cloud Database] Token permanently stored in "${collectionName}"`);
+        Utils.toast(`Token saved permanently in Firestore Database (Cloud) ✓`, 'success');
         return true;
       } catch (err) {
         console.error(`❌ [Firestore] Error saving token to "${collectionName}":`, err);
@@ -225,7 +269,7 @@ export class AuthManager {
         return false;
       }
     } else {
-      console.log('ℹ️ Local/Guest session: Token stored in local cache.');
+      console.log('ℹ️ Firestore DB not initialized yet.');
       return false;
     }
   }
@@ -276,7 +320,7 @@ export class AuthManager {
         Utils.toast(`Signed in as ${this.currentUser.displayName}`, 'success');
         
         // Start real-time multi-device token sync
-        this.startFirestoreRealtimeSync(user.uid);
+        this.startFirestoreRealtimeSync(user.uid, user.email);
         
         return this.currentUser;
       } catch (err) {
@@ -329,19 +373,23 @@ export class AuthManager {
         Utils.toast(`Welcome back, ${this.currentUser.displayName}!`, 'success');
 
         // Start real-time multi-device token sync
-        this.startFirestoreRealtimeSync(user.uid);
+        this.startFirestoreRealtimeSync(user.uid, user.email);
 
         return this.currentUser;
       } catch (err) {
         // Fallback for local account simulation if Firebase auth email/password is not enabled in Firebase console
         if (err.code === 'auth/operation-not-allowed' || err.code === 'auth/user-not-found' || err.code === 'auth/api-key-not-valid') {
-          return this.loginLocalAccount(email, email.split('@')[0]);
+          const localUser = this.loginLocalAccount(email, email.split('@')[0]);
+          this.startFirestoreRealtimeSync(null, email);
+          return localUser;
         }
         Utils.toast(`Sign In: ${err.message}`, 'error');
         throw err;
       }
     } else {
-      return this.loginLocalAccount(email, email.split('@')[0]);
+      const localUser = this.loginLocalAccount(email, email.split('@')[0]);
+      this.startFirestoreRealtimeSync(null, email);
+      return localUser;
     }
   }
 
@@ -379,18 +427,28 @@ export class AuthManager {
         if (apiToken) {
           await this.saveTokenToFirestore(apiToken);
         }
-        this.startFirestoreRealtimeSync(user.uid);
+        this.startFirestoreRealtimeSync(user.uid, user.email);
 
         return this.currentUser;
       } catch (err) {
         if (err.code === 'auth/operation-not-allowed' || err.code === 'auth/api-key-not-valid') {
-          return this.loginLocalAccount(email, name || email.split('@')[0]);
+          const localUser = this.loginLocalAccount(email, name || email.split('@')[0]);
+          if (apiToken) {
+            await this.saveTokenToFirestore(apiToken);
+          }
+          this.startFirestoreRealtimeSync(null, email);
+          return localUser;
         }
         Utils.toast(`Sign Up: ${err.message}`, 'error');
         throw err;
       }
     } else {
-      return this.loginLocalAccount(email, name || email.split('@')[0]);
+      const localUser = this.loginLocalAccount(email, name || email.split('@')[0]);
+      if (apiToken) {
+        await this.saveTokenToFirestore(apiToken);
+      }
+      this.startFirestoreRealtimeSync(null, email);
+      return localUser;
     }
   }
 
