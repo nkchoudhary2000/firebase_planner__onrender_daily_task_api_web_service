@@ -67,11 +67,21 @@ export class SettingsModalComponent extends EventTarget {
               </button>
             </div>
             
+            <!-- Cloud Multi-Device Action Toolbar -->
+            <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem;">
+              <button type="button" id="btnPushTokenCloud" class="btn-secondary" style="flex: 1; font-size: 0.78rem; padding: 0.45rem 0.65rem; justify-content: center; background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3); color: #34d399;" title="Upload this token to Firestore so all your devices (mobile, laptop) can use it">
+                ☁️ Save Token to Cloud
+              </button>
+              <button type="button" id="btnPullTokenCloud" class="btn-secondary" style="flex: 1; font-size: 0.78rem; padding: 0.45rem 0.65rem; justify-content: center; background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3); color: #60a5fa;" title="Pull and restore token saved in Firestore for your Google account">
+                ⬇️ Pull from Cloud
+              </button>
+            </div>
+
             <!-- Firestore Sync Status Indicator -->
-            <div id="settingsFirestoreBadge" style="margin-top: 0.35rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem;">
+            <div id="settingsFirestoreBadge" style="margin-top: 0.45rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem;">
               <span id="settingsFirestoreText" style="color: #10b981; display: flex; align-items: center; gap: 0.35rem;">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
-                <span>Synced with Firestore (collection: <code>daily_task_planner_users</code>)</span>
+                <span>Firestore Cloud Collection: <code>daily_task_planner_users</code></span>
               </span>
               <a href="https://chronos-planner-app.onrender.com/auth/login" target="_blank" rel="noopener noreferrer" style="color: var(--color-primary); font-weight: 600; text-decoration: none;">
                 🔑 Get Token from Chronos App ↗
@@ -137,6 +147,8 @@ export class SettingsModalComponent extends EventTarget {
     const googleAuthBtn = this.modalEl.querySelector('#btnGoogleAuthAction');
     const themeOrangeBtn = this.modalEl.querySelector('#btnThemeOrange');
     const themeEmeraldBtn = this.modalEl.querySelector('#btnThemeEmerald');
+    const pushTokenBtn = this.modalEl.querySelector('#btnPushTokenCloud');
+    const pullTokenBtn = this.modalEl.querySelector('#btnPullTokenCloud');
 
     const hide = () => this.close();
     closeBtn.addEventListener('click', hide);
@@ -162,6 +174,96 @@ export class SettingsModalComponent extends EventTarget {
     testPingBtn.addEventListener('click', async () => {
       await this.runPingTest();
     });
+
+    // ☁️ Explicit Push to Cloud
+    if (pushTokenBtn) {
+      pushTokenBtn.addEventListener('click', async () => {
+        const tokenInput = this.modalEl.querySelector('#settingsApiToken');
+        const baseUrlInput = this.modalEl.querySelector('#settingsBaseUrl');
+        const tokenVal = tokenInput ? tokenInput.value.trim() : '';
+        const baseUrlVal = baseUrlInput ? baseUrlInput.value.trim() : '';
+
+        if (!tokenVal) {
+          Utils.toast('Please enter your Chronos API Token first', 'error');
+          if (tokenInput) tokenInput.focus();
+          return;
+        }
+
+        const user = auth.getUser();
+        if (!user || !user.uid || user.uid.startsWith('guest_') || user.uid.startsWith('local_')) {
+          Utils.toast('Please Sign In with Google first so the token is linked to your account.', 'info', 5000);
+          await auth.signInWithGoogle();
+        }
+
+        pushTokenBtn.disabled = true;
+        pushTokenBtn.textContent = 'Uploading...';
+        
+        const success = await auth.saveTokenToFirestore(tokenVal, baseUrlVal);
+        pushTokenBtn.disabled = false;
+        pushTokenBtn.textContent = '☁️ Save Token to Cloud';
+
+        if (success) {
+          Utils.toast('✅ Token stored in Firestore! Now available on all your mobile and desktop devices.', 'success', 5000);
+        }
+      });
+    }
+
+    // ⬇️ Explicit Pull from Cloud
+    if (pullTokenBtn) {
+      pullTokenBtn.addEventListener('click', async () => {
+        const user = auth.getUser();
+        if (!user || !user.uid || user.uid.startsWith('guest_') || user.uid.startsWith('local_')) {
+          Utils.toast('Please Sign In with Google first to restore your cloud token.', 'info');
+          await auth.signInWithGoogle();
+          return;
+        }
+
+        pullTokenBtn.disabled = true;
+        pullTokenBtn.textContent = 'Fetching...';
+
+        const tokenInput = this.modalEl.querySelector('#settingsApiToken');
+        const baseUrlInput = this.modalEl.querySelector('#settingsBaseUrl');
+
+        try {
+          const collectionName = ENV.FIRESTORE_COLLECTION || 'daily_task_planner_users';
+          let cloudToken = null;
+          let cloudBaseUrl = null;
+
+          if (auth.db) {
+            const snap = await auth.db.collection(collectionName).doc(user.uid).get();
+            if (snap.exists && snap.data() && snap.data().chronos_api_token) {
+              cloudToken = snap.data().chronos_api_token;
+              cloudBaseUrl = snap.data().chronos_base_url;
+            } else {
+              // Check fallback
+              const fallbackSnap = await auth.db.collection('users').doc(user.uid).get().catch(() => null);
+              if (fallbackSnap && fallbackSnap.exists && fallbackSnap.data() && fallbackSnap.data().chronos_api_token) {
+                cloudToken = fallbackSnap.data().chronos_api_token;
+                cloudBaseUrl = fallbackSnap.data().chronos_base_url;
+              }
+            }
+          }
+
+          pullTokenBtn.disabled = false;
+          pullTokenBtn.textContent = '⬇️ Pull from Cloud';
+
+          if (cloudToken) {
+            api.setToken(cloudToken);
+            if (cloudBaseUrl) api.setBaseUrl(cloudBaseUrl);
+            if (tokenInput) tokenInput.value = cloudToken;
+            if (baseUrlInput && cloudBaseUrl) baseUrlInput.value = cloudBaseUrl;
+            Utils.toast(`✅ Pulled token from Firestore: ${cloudToken.substring(0, 8)}...`, 'success');
+            await this.runPingTest();
+          } else {
+            Utils.toast(`No token found in Firestore cloud for ${user.email}. Enter token and click "Save Token to Cloud".`, 'info', 5500);
+          }
+        } catch (err) {
+          pullTokenBtn.disabled = false;
+          pullTokenBtn.textContent = '⬇️ Pull from Cloud';
+          Utils.toast(`Cloud fetch failed: ${err.message}`, 'error');
+        }
+      });
+    }
 
     themeOrangeBtn.addEventListener('click', () => {
       document.documentElement.setAttribute('data-theme', 'orange');

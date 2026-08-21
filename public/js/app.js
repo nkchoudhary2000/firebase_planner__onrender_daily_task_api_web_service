@@ -281,6 +281,48 @@ class ChronosApp {
       });
     }
 
+    // Header Cloud Sync Button
+    const btnCloudSync = document.getElementById('btnHeaderCloudSync');
+    if (btnCloudSync) {
+      btnCloudSync.addEventListener('click', async () => {
+        const user = auth.getUser();
+        if (!user || !user.uid || user.uid.startsWith('guest_') || user.uid.startsWith('local_')) {
+          Utils.toast('Please sign in with Google to enable cross-device cloud sync.', 'info', 4500);
+          this.settingsModal.open();
+          return;
+        }
+
+        btnCloudSync.disabled = true;
+        const syncText = document.getElementById('headerCloudSyncText');
+        if (syncText) syncText.textContent = 'Syncing...';
+
+        try {
+          // 1. Pull latest token from Firestore
+          const collectionName = 'daily_task_planner_users';
+          let pulled = false;
+          if (auth.db) {
+            const snap = await auth.db.collection(collectionName).doc(user.uid).get();
+            if (snap.exists && snap.data() && snap.data().chronos_api_token) {
+              api.setToken(snap.data().chronos_api_token);
+              if (snap.data().chronos_base_url) api.setBaseUrl(snap.data().chronos_base_url);
+              pulled = true;
+            }
+          }
+
+          // 2. Refresh daily planner from Render
+          await this.refreshAllData({ forceServer: true });
+          await this.checkInitialConnection();
+
+          Utils.toast(pulled ? '☁️ Cloud Sync: Token & tasks updated from your Google account.' : '☁️ Cloud Sync complete.', 'success');
+        } catch (e) {
+          Utils.toast(`Sync error: ${e.message}`, 'error');
+        } finally {
+          btnCloudSync.disabled = false;
+          if (syncText) syncText.textContent = 'Sync';
+        }
+      });
+    }
+
     // Google Auth Button in Header
     const userBadge = document.getElementById('headerUserBadge');
     if (userBadge) {
