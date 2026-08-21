@@ -1,0 +1,21 @@
+{
+  "name": "daily-task-planner-api-niomsolutionx",
+  "version": "1.0.0",
+  "description": "Daily Task Planner with Render API sync, Firebase Google Authentication, non-blocking background queue, and Solar Orange / Emerald themes.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "deploy": "firebase deploy --only hosting:daily-task-planner-api-niomsolutionx",
+    "deploy:all-hosting": "firebase deploy --only hosting"
+  },
+  "keywords": [
+    "firebase",
+    "planner",
+    "render-api",
+    "task-management",
+    "google-auth"
+  ],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "niraj-portfolio-a7011"
+  },
+  "targets": {
+    "niraj-portfolio-a7011": {
+      "hosting": {
+        "daily-task-planner-api-niomsolutionx": [
+          "daily-task-planner-api-niomsolutionx"
+        ]
+      }
+    }
+  }
+}

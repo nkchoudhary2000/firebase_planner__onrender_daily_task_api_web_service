@@ -1,0 +1,167 @@
+/* ==========================================================================
+   Chronos Planner - Themes & Color System
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Default / Solar Orange Theme (Dark Mode Base)
+   -------------------------------------------------------------------------- */
+:root,
+[data-theme="orange"][data-mode="dark"] {
+  --theme-name: "Solar Orange";
+  --primary-hue: 25;
+  --primary-sat: 100%;
+  --primary-light: 50%;
+
+  /* Brand Accents */
+  --color-primary: #ff6b00;
+  --color-primary-hover: #ff8533;
+  --color-primary-active: #e65c00;
+  --color-primary-subtle: rgba(255, 107, 0, 0.12);
+  --color-primary-border: rgba(255, 107, 0, 0.35);
+  --color-primary-glow: rgba(255, 107, 0, 0.45);
+  --gradient-primary: linear-gradient(135deg, #ff8c00 0%, #ff5100 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(255, 107, 0, 0.15) 0%, rgba(255, 60, 0, 0.05) 100%);
+
+  /* Backgrounds & Surfaces (Obsidian Glass) */
+  --bg-app: #0c0e14;
+  --bg-gradient: radial-gradient(circle at 80% 0%, rgba(255, 107, 0, 0.08) 0%, rgba(12, 14, 20, 0) 50%),
+                 radial-gradient(circle at 10% 100%, rgba(255, 60, 0, 0.06) 0%, rgba(12, 14, 20, 0) 60%),
+                 #0c0e14;
+  --bg-surface: #141722;
+  --bg-surface-elevated: #1a1e2d;
+  --bg-surface-glass: rgba(20, 23, 34, 0.75);
+  --bg-surface-glass-hover: rgba(28, 33, 48, 0.85);
+  --bg-input: #10131d;
+
+  /* Borders & Dividers */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-medium: rgba(255, 255, 255, 0.12);
+  --border-focus: #ff6b00;
+
+  /* Typography */
+  --text-main: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --text-inverse: #0c0e14;
+
+  /* Status Badges */
+  --badge-high-bg: rgba(239, 68, 68, 0.15);
+  --badge-high-text: #f87171;
+  --badge-med-bg: rgba(245, 158, 11, 0.15);
+  --badge-med-text: #fbbf24;
+  --badge-low-bg: rgba(59, 130, 246, 0.15);
+  --badge-low-text: #60a5fa;
+
+  --badge-success-bg: rgba(16, 185, 129, 0.15);
+  --badge-success-text: #34d399;
+  --badge-progress-bg: rgba(255, 107, 0, 0.15);
+  --badge-progress-text: #ff8c00;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 24px rgba(255, 107, 0, 0.3);
+}
+
+/* --------------------------------------------------------------------------
+   Emerald Green Theme (Dark Mode)
+   -------------------------------------------------------------------------- */
+[data-theme="emerald"][data-mode="dark"],
+[data-theme="emerald"] {
+  --theme-name: "Cyber Emerald";
+  --primary-hue: 160;
+  --primary-sat: 84%;
+  --primary-light: 39%;
+
+  /* Brand Accents */
+  --color-primary: #10b981;
+  --color-primary-hover: #34d399;
+  --color-primary-active: #059669;
+  --color-primary-subtle: rgba(16, 185, 129, 0.12);
+  --color-primary-border: rgba(16, 185, 129, 0.35);
+  --color-primary-glow: rgba(16, 185, 129, 0.45);
+  --gradient-primary: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(4, 120, 87, 0.05) 100%);
+
+  /* Backgrounds & Surfaces (Deep Emerald Obsidian) */
+  --bg-app: #0a110e;
+  --bg-gradient: radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.08) 0%, rgba(10, 17, 14, 0) 50%),
+                 radial-gradient(circle at 10% 100%, rgba(5, 150, 105, 0.06) 0%, rgba(10, 17, 14, 0) 60%),
+                 #0a110e;
+  --bg-surface: #101d19;
+  --bg-surface-elevated: #162722;
+  --bg-surface-glass: rgba(16, 29, 25, 0.75);
+  --bg-surface-glass-hover: rgba(22, 39, 34, 0.85);
+  --bg-input: #0d1714;
+
+  /* Borders & Dividers */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-medium: rgba(255, 255, 255, 0.12);
+  --border-focus: #10b981;
+
+  /* Typography */
+  --text-main: #f0fdf4;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --text-inverse: #0a110e;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.65);
+  --shadow-glow: 0 0 24px rgba(16, 185, 129, 0.3);
+}
+
+/* --------------------------------------------------------------------------
+   Light Mode Variants
+   -------------------------------------------------------------------------- */
+[data-mode="light"][data-theme="orange"] {
+  --bg-app: #f8fafc;
+  --bg-gradient: radial-gradient(circle at 80% 0%, rgba(255, 107, 0, 0.08) 0%, rgba(248, 250, 252, 0) 50%),
+                 #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-surface-glass: rgba(255, 255, 255, 0.85);
+  --bg-surface-glass-hover: rgba(249, 250, 251, 0.95);
+  --bg-input: #f1f5f9;
+
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-medium: rgba(0, 0, 0, 0.12);
+  --border-focus: #ff6b00;
+
+  --text-main: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-inverse: #ffffff;
+
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 20px rgba(255, 107, 0, 0.2);
+}
+
+[data-mode="light"][data-theme="emerald"] {
+  --bg-app: #f8fafc;
+  --bg-gradient: radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.08) 0%, rgba(248, 250, 252, 0) 50%),
+                 #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-surface-glass: rgba(255, 255, 255, 0.85);
+  --bg-surface-glass-hover: rgba(249, 250, 251, 0.95);
+  --bg-input: #f1f5f9;
+
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-medium: rgba(0, 0, 0, 0.12);
+  --border-focus: #10b981;
+
+  --text-main: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-inverse: #ffffff;
+
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 20px rgba(16, 185, 129, 0.2);
+}
