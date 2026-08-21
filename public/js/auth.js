@@ -280,7 +280,19 @@ export class AuthManager {
         
         return this.currentUser;
       } catch (err) {
-        console.warn('Google Popup error:', err);
+        console.warn('Google Auth notice:', err.code || err.message);
+        if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+          // User closed the popup window, clean silent exit
+          return null;
+        }
+        if (err.code === 'auth/popup-blocked') {
+          Utils.toast('Popup blocked by browser. Please allow popups or try again.', 'info');
+          try {
+            const provider = new window.firebase.auth.GoogleAuthProvider();
+            await this.authInstance.signInWithRedirect(provider);
+            return null;
+          } catch (e) {}
+        }
         if (err.code === 'auth/api-key-not-valid' || err.code === 'auth/configuration-not-found') {
           return this.promptDemoLogin(err.message);
         }
